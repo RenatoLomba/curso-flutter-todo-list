@@ -15,6 +15,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final TextEditingController _todoController = TextEditingController();
   List<Todo> _todos = [];
+  String _errorMessage = '';
 
   Future<File> _getFile() async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -24,7 +25,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _addTodo() async {
     Todo todo = Todo.build(_todoController.text);
-    _todos.add(todo);
+    var todos = _todos.toList();
+    todos.add(todo);
+
+    setState(() {
+      _errorMessage = '';
+      _todos = todos;
+    });
 
     File file = await _getFile();
 
@@ -38,20 +45,30 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  _read() async {
+  Future<List<Todo>?> _readTodos() async {
     File file = await _getFile();
 
-    String fileData = await file.readAsString();
+    try {
+      String fileData = await file.readAsString();
 
-    List<dynamic> jsonData = json.decode(fileData);
+      List<dynamic> jsonData = json.decode(fileData);
 
-    List<Todo> todos = jsonData
-      .map((d) => Todo.fromJSON(d))
-      .toList();
+      List<Todo> todos = jsonData
+          .map((d) => Todo.fromJSON(d))
+          .toList();
 
-    setState(() {
-      _todos = todos;
-    });
+      return todos;
+    } on PathNotFoundException {
+      setState(() {
+        _errorMessage = 'Nenhuma tarefa encontrada.';
+      });
+      return null;
+    } catch(err) {
+      setState(() {
+        _errorMessage = 'Erro ao buscar dados.';
+      });
+      return null;
+    }
   }
 
   void _onPressAddButton() {
@@ -86,9 +103,20 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    _read();
+  initState() {
+    super.initState();
 
+    _readTodos().then((data) {
+      if(data != null) {
+        setState(() {
+          _todos = data;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.purple,
@@ -97,13 +125,15 @@ class _MyHomePageState extends State<MyHomePage> {
           style: TextStyle(color: Colors.white),
         ),
       ),
-      body: ListView.builder(
-        itemCount: _todos.length,
-        itemBuilder: (_, idx) {
-          var todo = _todos[idx];
-          return ListTile(title: Text(todo.title));
-        },
-      ),
+      body: _errorMessage.isNotEmpty ?
+        Center(child: Text(_errorMessage)) :
+        ListView.builder(
+          itemCount: _todos.length,
+          itemBuilder: (_, idx) {
+            var todo = _todos[idx];
+            return ListTile(title: Text(todo.title));
+          },
+        ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.purple,
