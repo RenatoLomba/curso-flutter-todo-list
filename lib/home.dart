@@ -16,6 +16,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final TextEditingController _todoController = TextEditingController();
   List<Todo> _todos = [];
   String _errorMessage = '';
+  late Todo _lastRemovedTodo;
 
   Future<File> _getFile() async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -23,20 +24,22 @@ class _MyHomePageState extends State<MyHomePage> {
     return file;
   }
 
-  Future<void> _addTodo() async {
-    Todo todo = Todo.build(_todoController.text);
-    var todos = _todos.toList();
-    todos.add(todo);
-
-    setState(() {
-      _errorMessage = '';
-      _todos = todos;
-    });
-
+  Future<void> _saveFile() async {
     File file = await _getFile();
 
     String data = json.encode(_todos);
     await file.writeAsString(data);
+  }
+
+  Future<void> _addTodo() async {
+    Todo todo = Todo.build(_todoController.text);
+
+    setState(() {
+      _errorMessage = '';
+      _todos.add(todo);
+    });
+
+    await _saveFile();
 
     _todoController.clear();
 
@@ -102,6 +105,47 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  Future<void> _checkTodoDone(int id) async {
+    int todoIdx = _todos.indexWhere((t) => t.id == id);
+    if (todoIdx == -1) return;
+
+    setState(() {
+      _todos[todoIdx].done = true;
+    });
+    await _saveFile();
+  }
+
+  Future<void> _removeTodo(int id) async {
+    int todoIdx = _todos.indexWhere((t) => t.id == id);
+    if (todoIdx == -1) return;
+
+    _lastRemovedTodo = _todos[todoIdx];
+
+    setState(() {
+      _todos.removeAt(todoIdx);
+    });
+    await _saveFile();
+
+    SnackBar snackBar = SnackBar(
+      content: Text('Tarefa ${_lastRemovedTodo.title} removida.'),
+      duration: const Duration(seconds: 5),
+      backgroundColor: Colors.black45,
+      action: SnackBarAction(
+        label: 'Desfazer',
+        onPressed: () async {
+          setState(() {
+            _todos.insert(todoIdx, _lastRemovedTodo);
+          });
+          await _saveFile();
+        }
+      ),
+    );
+
+    if(mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    }
+  }
+
   @override
   initState() {
     super.initState();
@@ -131,7 +175,31 @@ class _MyHomePageState extends State<MyHomePage> {
           itemCount: _todos.length,
           itemBuilder: (_, idx) {
             var todo = _todos[idx];
-            return ListTile(title: Text(todo.title));
+            
+            return Dismissible(
+              key: Key(todo.id.toString()),
+              onDismissed: (direction) => _removeTodo(todo.id),
+              background: Container(
+                color: Colors.red,
+                padding: const EdgeInsets.all(16),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Icon(Icons.delete, color: Colors.white),
+                  ],
+                ),
+              ),
+              direction: DismissDirection.endToStart,
+              child: CheckboxListTile(
+                  title: Text(todo.title),
+                  value: todo.done,
+                  onChanged: (_) {
+                    if (!todo.done) {
+                      _checkTodoDone(todo.id);
+                    }
+                  }
+              ),
+            );
           },
         ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
